@@ -196,6 +196,7 @@
         </div>
     </div>
     <script>
+        /* ------------- FULL UPDATED SCRIPT INTEGRATED ------------- */
         let allLinksArray = [];
         let isSelecting = false;
         let history = [];
@@ -213,19 +214,43 @@
                     <div class="product-group-title">Producto ${i}</div>
                     <div class="dropzone" data-group-id="${i}"></div>
                     <button class="copy-group-btn">Copiar</button>
+                    <button class="send-back-btn">Enviar al principio</button>
                 `;
                 groupsContainer.appendChild(groupDiv);
             }
+
+            // Add borrar button to imágenes disponibles
+            const borrarBtn = document.createElement('button');
+            borrarBtn.textContent = 'Borrar';
+            borrarBtn.addEventListener('click', () => {
+                const selected = document.querySelectorAll('#links-container .draggable-image.selected');
+                if (selected.length === 0) {
+                    alert("Selecciona imágenes para borrar.");
+                    return;
+                }
+                selected.forEach(el => {
+                    allLinksArray = allLinksArray.filter(l => l !== el.getAttribute('data-link'));
+                    el.remove();
+                });
+                saveState();
+            });
+            document.querySelector('.column').prepend(borrarBtn);
+
             rebindEventListeners();
         });
 
-        function getDropzoneState() {
+        function getState() {
             const dropzones = document.querySelectorAll('.dropzone');
-            const state = [];
+            const state = {
+                dropzones: [],
+                available: []
+            };
             dropzones.forEach(zone => {
                 const links = Array.from(zone.querySelectorAll('.draggable-image')).map(el => el.getAttribute('data-link'));
-                state.push(links);
+                state.dropzones.push(links);
             });
+            const linksContainer = document.getElementById('links-container');
+            state.available = Array.from(linksContainer.querySelectorAll('.draggable-image')).map(el => el.getAttribute('data-link'));
             return state;
         }
 
@@ -233,11 +258,8 @@
             if (historyIndex < history.length - 1) {
                 history = history.slice(0, historyIndex + 1);
             }
-            
-            const currentState = getDropzoneState();
-            history.push(currentState);
+            history.push(getState());
             historyIndex++;
-
             if (history.length > MAX_HISTORY_SIZE) {
                 history.shift();
                 historyIndex--;
@@ -246,27 +268,22 @@
 
         function restoreState(index) {
             if (index >= 0 && index < history.length) {
-                const dropzoneState = history[index];
-                const linksContainer = document.getElementById('links-container');
+                const state = history[index];
                 const dropzones = document.querySelectorAll('.dropzone');
+                const linksContainer = document.getElementById('links-container');
 
                 linksContainer.innerHTML = '';
                 dropzones.forEach(zone => zone.innerHTML = '');
 
-                const allRestoredLinks = new Set(allLinksArray);
-
-                dropzoneState.forEach((zoneLinks, zoneIndex) => {
-                    const currentDropzone = dropzones[zoneIndex];
-                    zoneLinks.forEach(link => {
-                        const linkDiv = createLinkDiv(link);
-                        currentDropzone.appendChild(linkDiv);
-                        allRestoredLinks.delete(link);
-                    });
+                state.available.forEach(link => {
+                    linksContainer.appendChild(createLinkDiv(link));
                 });
 
-                allRestoredLinks.forEach(link => {
-                    const linkDiv = createLinkDiv(link);
-                    linksContainer.appendChild(linkDiv);
+                state.dropzones.forEach((zoneLinks, idx) => {
+                    const zone = dropzones[idx];
+                    zoneLinks.forEach(link => {
+                        zone.appendChild(createLinkDiv(link));
+                    });
                 });
 
                 historyIndex = index;
@@ -280,6 +297,7 @@
             addDeleteListener();
             addUndoRedoListeners();
             addCopyListeners();
+            addSendBackListeners();
         }
 
         function loadLinks() {
@@ -294,8 +312,7 @@
             linksContainer.innerHTML = '';
 
             links.forEach(link => {
-                const linkDiv = createLinkDiv(link);
-                linksContainer.appendChild(linkDiv);
+                linksContainer.appendChild(createLinkDiv(link));
             });
 
             history = [];
@@ -337,19 +354,15 @@
 
         function addClickToPasteListeners() {
             const dropzones = document.querySelectorAll('.dropzone');
-
             dropzones.forEach(zone => {
                 zone.addEventListener('mouseover', () => {
-                    const selectedItems = document.querySelectorAll('.draggable-image.selected');
-                    if (selectedItems.length > 0) {
+                    if (document.querySelectorAll('.draggable-image.selected').length > 0) {
                         zone.classList.add('hover-active');
                     }
                 });
-
                 zone.addEventListener('mouseout', () => {
                     zone.classList.remove('hover-active');
                 });
-
                 zone.addEventListener('click', () => {
                     const selectedItems = document.querySelectorAll('.draggable-image.selected');
                     if (selectedItems.length > 0) {
@@ -366,11 +379,7 @@
 
         function addMultiselectListeners() {
             const linksContainer = document.getElementById('links-container');
-
-            linksContainer.addEventListener('dragstart', (e) => {
-                e.preventDefault();
-            });
-
+            linksContainer.addEventListener('dragstart', e => e.preventDefault());
             linksContainer.addEventListener('mousedown', (e) => {
                 const clickedItem = e.target.closest('.draggable-image');
                 if (clickedItem) {
@@ -386,15 +395,11 @@
                     document.querySelectorAll('.draggable-image.active').forEach(el => el.classList.remove('active'));
                 }
             });
-
             document.addEventListener('mouseover', (e) => {
                 if (!isSelecting) return;
                 const item = e.target.closest('.draggable-image');
-                if (item) {
-                    item.classList.add('selected');
-                }
+                if (item) item.classList.add('selected');
             });
-
             document.addEventListener('mouseup', () => {
                 isSelecting = false;
             });
@@ -405,42 +410,8 @@
                 if (e.key === 'Delete' || e.key === 'Backspace') {
                     const activeElement = document.querySelector('.draggable-image.active');
                     if (!activeElement) return;
-
-                    const parentContainer = activeElement.parentElement;
                     activeElement.remove();
-
-                    if (parentContainer.id === 'links-container') {
-                        alert("Producto eliminado de forma permanente.");
-                    } else {
-                        const originalLink = activeElement.getAttribute('data-link');
-                        const linksContainer = document.getElementById('links-container');
-                        const linksInList = Array.from(linksContainer.querySelectorAll('.draggable-image'));
-                        let inserted = false;
-
-                        for (let i = 0; i < allLinksArray.length; i++) {
-                            const linkFromOriginalList = allLinksArray[i];
-                            if (originalLink === linkFromOriginalList) {
-                                if (i === allLinksArray.length - 1 || linksInList.length === 0) {
-                                    linksContainer.appendChild(activeElement);
-                                } else {
-                                    const nextLinkInList = allLinksArray[i + 1];
-                                    const nextElement = linksInList.find(el => el.getAttribute('data-link') === nextLinkInList);
-                                    if (nextElement) {
-                                        linksContainer.insertBefore(activeElement, nextElement);
-                                    } else {
-                                        linksContainer.appendChild(activeElement);
-                                    }
-                                }
-                                inserted = true;
-                                break;
-                            }
-                        }
-
-                        if (!inserted) {
-                           linksContainer.appendChild(activeElement);
-                        }
-                        alert("Producto devuelto al listado inicial.");
-                    }
+                    allLinksArray = allLinksArray.filter(l => l !== activeElement.getAttribute('data-link'));
                     saveState();
                 }
             });
@@ -449,14 +420,12 @@
         function addUndoRedoListeners() {
             document.getElementById('undoBtn').addEventListener('click', () => {
                 if (historyIndex > 0) {
-                    historyIndex--;
-                    restoreState(historyIndex);
+                    restoreState(historyIndex - 1);
                 }
             });
             document.getElementById('redoBtn').addEventListener('click', () => {
                 if (historyIndex < history.length - 1) {
-                    historyIndex++;
-                    restoreState(historyIndex);
+                    restoreState(historyIndex + 1);
                 }
             });
         }
@@ -465,37 +434,39 @@
             document.getElementById('copyAllBtn').addEventListener('click', () => {
                 const dropzones = document.querySelectorAll('.dropzone');
                 let allGroupedLinks = [];
-
                 dropzones.forEach(zone => {
-                    const linksInGroup = zone.querySelectorAll('.draggable-image');
-                    const linksArray = Array.from(linksInGroup).map(linkDiv => linkDiv.getAttribute('data-link'));
-
+                    const linksArray = Array.from(zone.querySelectorAll('.draggable-image')).map(el => el.getAttribute('data-link'));
                     if (linksArray.length > 0) {
                         allGroupedLinks.push(linksArray.join(','));
                     }
                 });
-
                 const resultString = allGroupedLinks.join('\n');
-
-                if (resultString) {
-                    copyToClipboard(resultString, `Todos los links de los grupos copiados ✅`);
-                } else {
-                    alert('No hay productos en los grupos para copiar.');
-                }
+                if (resultString) copyToClipboard(resultString, "Todos los links de los grupos copiados ✅");
+                else alert('No hay productos en los grupos para copiar.');
             });
 
             document.querySelectorAll('.copy-group-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const dropzone = e.target.previousElementSibling;
-                    const linksInGroup = dropzone.querySelectorAll('.draggable-image');
-                    const linksArray = Array.from(linksInGroup).map(linkDiv => linkDiv.getAttribute('data-link'));
+                    const linksArray = Array.from(dropzone.querySelectorAll('.draggable-image')).map(el => el.getAttribute('data-link'));
                     const resultString = linksArray.join(',');
+                    if (resultString) copyToClipboard(resultString);
+                    else alert("No hay enlaces en este grupo para copiar.");
+                });
+            });
+        }
 
-                    if (resultString) {
-                        copyToClipboard(resultString);
-                    } else {
-                        alert("No hay enlaces en este grupo para copiar.");
-                    }
+        function addSendBackListeners() {
+            document.querySelectorAll('.send-back-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const dropzone = e.target.previousElementSibling;
+                    const items = Array.from(dropzone.querySelectorAll('.draggable-image'));
+                    const linksContainer = document.getElementById('links-container');
+                    items.forEach(item => {
+                        dropzone.removeChild(item);
+                        linksContainer.insertBefore(item, linksContainer.firstChild);
+                    });
+                    saveState();
                 });
             });
         }
@@ -504,9 +475,7 @@
             try {
                 navigator.clipboard.writeText(text).then(() => {
                     if (successMessage) alert(successMessage);
-                }).catch(() => {
-                    fallbackCopy(text, successMessage);
-                });
+                }).catch(() => fallbackCopy(text, successMessage));
             } catch (e) {
                 fallbackCopy(text, successMessage);
             }

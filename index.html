@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agrupar Links por Producto (Multiselección)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 30px auto;
+            background-color: #f4f4f9;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .column {
+            flex: 1;
+            padding: 15px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h2, h3 {
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            resize: vertical;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .draggable-image {
+            padding: 5px;
+            margin-bottom: 5px;
+            background-color: #e9ecef;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100px;
+            width: 100px;
+            overflow: hidden;
+            box-sizing: border-box;
+            user-select: none;
+            position: relative;
+        }
+        .draggable-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .draggable-image.selected {
+            background-color: #e0ffe0;
+            border: 2px solid #28a745;
+        }
+        .draggable-image.active {
+            border: 2px solid #ff8c00;
+        }
+        .draggable-image.error {
+            background-color: #ffcccc;
+        }
+        .draggable-image.error::after {
+            content: "ERROR - No se puede cargar";
+            font-size: 10px;
+            text-align: center;
+            color: #a94442;
+            padding: 5px;
+        }
+        .dropzone {
+            min-height: 100px;
+            border: 2px dashed #007bff;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            margin-top: 10px;
+            transition: background-color 0.2s ease;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .dropzone.drag-over {
+            background-color: #e2f0ff;
+        }
+        .dropzone.hover-active {
+            border: 2px solid #007bff;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+        }
+        .product-group {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .product-group-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        #groups-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            overflow-y: scroll;
+            height: 600px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #fff;
+        }
+        #groups-container::-webkit-scrollbar {
+            width: 12px;
+        }
+        #groups-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 6px;
+        }
+        #groups-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 6px;
+        }
+        #groups-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .copy-group-btn {
+            background-color: #28a745;
+            margin-top: 5px;
+        }
+        .copy-group-btn:hover {
+            background-color: #218838;
+        }
+        #links-container {
+            position: relative;
+            overflow-y: scroll;
+            height: 600px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #fff;
+        }
+        #links-container::-webkit-scrollbar {
+            width: 12px;
+        }
+        #links-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 6px;
+        }
+        #links-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 6px;
+        }
+        #links-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .toolbar {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Agrupar Links por Producto (Multiselección)</h2>
+    <p>1. Pega tus links. 2. Haz clic y arrastra para seleccionar. 3. Pasa el cursor sobre un grupo y haz clic para pegar las imágenes seleccionadas.</p>
+    <textarea id="input" placeholder="Pega aquí los links, separados por saltos de línea..."></textarea>
+    <button onclick="loadLinks()">Cargar Links</button>
+    <div class="toolbar">
+        <button id="undoBtn">Deshacer</button>
+        <button id="redoBtn">Rehacer</button>
+    </div>
+    <br><br>
+    <div class="container">
+        <div class="column">
+            <h3>Imágenes Disponibles</h3>
+            <div id="links-container"></div>
+        </div>
+        <div class="column">
+            <button id="copyAllBtn">Copiar todos los grupos</button>
+            <h3>Grupos de Productos (396)</h3>
+            <div id="groups-container"></div>
+        </div>
+    </div>
+    <script>
+        let allLinksArray = [];
+        let isSelecting = false;
+        let history = [];
+        let historyIndex = -1;
+        const MAX_HISTORY_SIZE = 5;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const groupsContainer = document.getElementById('groups-container');
+            const numProducts = 396;
+            for (let i = 1; i <= numProducts; i++) {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'product-group';
+                groupDiv.id = `group-${i}`;
+                groupDiv.innerHTML = `
+                    <div class="product-group-title">Producto ${i}</div>
+                    <div class="dropzone" data-group-id="${i}"></div>
+                    <button class="copy-group-btn">Copiar</button>
+                `;
+                groupsContainer.appendChild(groupDiv);
+            }
+            rebindEventListeners();
+        });
+
+        function getDropzoneState() {
+            const dropzones = document.querySelectorAll('.dropzone');
+            const state = [];
+            dropzones.forEach(zone => {
+                const links = Array.from(zone.querySelectorAll('.draggable-image')).map(el => el.getAttribute('data-link'));
+                state.push(links);
+            });
+            return state;
+        }
+
+        function saveState() {
+            if (historyIndex < history.length - 1) {
+                history = history.slice(0, historyIndex + 1);
+            }
+            
+            const currentState = getDropzoneState();
+            history.push(currentState);
+            historyIndex++;
+
+            if (history.length > MAX_HISTORY_SIZE) {
+                history.shift();
+                historyIndex--;
+            }
+        }
+
+        function restoreState(index) {
+            if (index >= 0 && index < history.length) {
+                const dropzoneState = history[index];
+                const linksContainer = document.getElementById('links-container');
+                const dropzones = document.querySelectorAll('.dropzone');
+
+                linksContainer.innerHTML = '';
+                dropzones.forEach(zone => zone.innerHTML = '');
+
+                const allRestoredLinks = new Set(allLinksArray);
+
+                dropzoneState.forEach((zoneLinks, zoneIndex) => {
+                    const currentDropzone = dropzones[zoneIndex];
+                    zoneLinks.forEach(link => {
+                        const linkDiv = createLinkDiv(link);
+                        currentDropzone.appendChild(linkDiv);
+                        allRestoredLinks.delete(link);
+                    });
+                });
+
+                allRestoredLinks.forEach(link => {
+                    const linkDiv = createLinkDiv(link);
+                    linksContainer.appendChild(linkDiv);
+                });
+
+                historyIndex = index;
+                rebindEventListeners();
+            }
+        }
+
+        function rebindEventListeners() {
+            addClickToPasteListeners();
+            addMultiselectListeners();
+            addDeleteListener();
+            addUndoRedoListeners();
+            addCopyListeners();
+        }
+
+        function loadLinks() {
+            const input = document.getElementById('input').value.trim();
+            if (!input) {
+                alert("Por favor, pega algunos links primero.");
+                return;
+            }
+            const links = input.split('\n').filter(link => link.trim() !== '');
+            allLinksArray = links;
+            const linksContainer = document.getElementById('links-container');
+            linksContainer.innerHTML = '';
+
+            links.forEach(link => {
+                const linkDiv = createLinkDiv(link);
+                linksContainer.appendChild(linkDiv);
+            });
+
+            history = [];
+            historyIndex = -1;
+            saveState();
+
+            addClickToPasteListeners();
+        }
+
+        function createLinkDiv(link) {
+            const linkDiv = document.createElement('div');
+            linkDiv.className = 'draggable-image';
+            linkDiv.setAttribute('data-link', link.trim());
+
+            const img = document.createElement('img');
+            img.src = link.trim();
+            img.alt = 'Imagen';
+
+            img.addEventListener('error', () => {
+                linkDiv.classList.add('error');
+            });
+
+            linkDiv.appendChild(img);
+
+            linkDiv.addEventListener('click', (e) => {
+                document.querySelectorAll('.draggable-image.active').forEach(el => el.classList.remove('active'));
+                linkDiv.classList.add('active');
+
+                if (e.shiftKey) {
+                    linkDiv.classList.toggle('selected');
+                } else {
+                    document.querySelectorAll('.draggable-image.selected').forEach(el => el.classList.remove('selected'));
+                    linkDiv.classList.add('selected');
+                }
+            });
+
+            return linkDiv;
+        }
+
+        function addClickToPasteListeners() {
+            const dropzones = document.querySelectorAll('.dropzone');
+
+            dropzones.forEach(zone => {
+                zone.addEventListener('mouseover', () => {
+                    const selectedItems = document.querySelectorAll('.draggable-image.selected');
+                    if (selectedItems.length > 0) {
+                        zone.classList.add('hover-active');
+                    }
+                });
+
+                zone.addEventListener('mouseout', () => {
+                    zone.classList.remove('hover-active');
+                });
+
+                zone.addEventListener('click', () => {
+                    const selectedItems = document.querySelectorAll('.draggable-image.selected');
+                    if (selectedItems.length > 0) {
+                        selectedItems.forEach(item => {
+                            item.classList.remove('selected', 'active');
+                            zone.appendChild(item);
+                        });
+                        saveState();
+                        zone.classList.remove('hover-active');
+                    }
+                });
+            });
+        }
+
+        function addMultiselectListeners() {
+            const linksContainer = document.getElementById('links-container');
+
+            linksContainer.addEventListener('dragstart', (e) => {
+                e.preventDefault();
+            });
+
+            linksContainer.addEventListener('mousedown', (e) => {
+                const clickedItem = e.target.closest('.draggable-image');
+                if (clickedItem) {
+                    isSelecting = true;
+                    if (!e.shiftKey) {
+                        document.querySelectorAll('.draggable-image.selected').forEach(el => el.classList.remove('selected'));
+                        document.querySelectorAll('.draggable-image.active').forEach(el => el.classList.remove('active'));
+                    }
+                    clickedItem.classList.add('selected');
+                } else {
+                    isSelecting = true;
+                    document.querySelectorAll('.draggable-image.selected').forEach(el => el.classList.remove('selected'));
+                    document.querySelectorAll('.draggable-image.active').forEach(el => el.classList.remove('active'));
+                }
+            });
+
+            document.addEventListener('mouseover', (e) => {
+                if (!isSelecting) return;
+                const item = e.target.closest('.draggable-image');
+                if (item) {
+                    item.classList.add('selected');
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isSelecting = false;
+            });
+        }
+
+        function addDeleteListener() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                    const activeElement = document.querySelector('.draggable-image.active');
+                    if (!activeElement) return;
+
+                    const parentContainer = activeElement.parentElement;
+                    activeElement.remove();
+
+                    if (parentContainer.id === 'links-container') {
+                        alert("Producto eliminado de forma permanente.");
+                    } else {
+                        const originalLink = activeElement.getAttribute('data-link');
+                        const linksContainer = document.getElementById('links-container');
+                        const linksInList = Array.from(linksContainer.querySelectorAll('.draggable-image'));
+                        let inserted = false;
+
+                        for (let i = 0; i < allLinksArray.length; i++) {
+                            const linkFromOriginalList = allLinksArray[i];
+                            if (originalLink === linkFromOriginalList) {
+                                if (i === allLinksArray.length - 1 || linksInList.length === 0) {
+                                    linksContainer.appendChild(activeElement);
+                                } else {
+                                    const nextLinkInList = allLinksArray[i + 1];
+                                    const nextElement = linksInList.find(el => el.getAttribute('data-link') === nextLinkInList);
+                                    if (nextElement) {
+                                        linksContainer.insertBefore(activeElement, nextElement);
+                                    } else {
+                                        linksContainer.appendChild(activeElement);
+                                    }
+                                }
+                                inserted = true;
+                                break;
+                            }
+                        }
+
+                        if (!inserted) {
+                           linksContainer.appendChild(activeElement);
+                        }
+                        alert("Producto devuelto al listado inicial.");
+                    }
+                    saveState();
+                }
+            });
+        }
+
+        function addUndoRedoListeners() {
+            document.getElementById('undoBtn').addEventListener('click', () => {
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    restoreState(historyIndex);
+                }
+            });
+            document.getElementById('redoBtn').addEventListener('click', () => {
+                if (historyIndex < history.length - 1) {
+                    historyIndex++;
+                    restoreState(historyIndex);
+                }
+            });
+        }
+
+        function addCopyListeners() {
+            document.getElementById('copyAllBtn').addEventListener('click', () => {
+                const dropzones = document.querySelectorAll('.dropzone');
+                let allGroupedLinks = [];
+
+                dropzones.forEach(zone => {
+                    const linksInGroup = zone.querySelectorAll('.draggable-image');
+                    const linksArray = Array.from(linksInGroup).map(linkDiv => linkDiv.getAttribute('data-link'));
+
+                    if (linksArray.length > 0) {
+                        allGroupedLinks.push(linksArray.join(','));
+                    }
+                });
+
+                const resultString = allGroupedLinks.join('\n');
+
+                if (resultString) {
+                    copyToClipboard(resultString, `Todos los links de los grupos copiados ✅`);
+                } else {
+                    alert('No hay productos en los grupos para copiar.');
+                }
+            });
+
+            document.querySelectorAll('.copy-group-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const dropzone = e.target.previousElementSibling;
+                    const linksInGroup = dropzone.querySelectorAll('.draggable-image');
+                    const linksArray = Array.from(linksInGroup).map(linkDiv => linkDiv.getAttribute('data-link'));
+                    const resultString = linksArray.join(',');
+
+                    if (resultString) {
+                        copyToClipboard(resultString);
+                    } else {
+                        alert("No hay enlaces en este grupo para copiar.");
+                    }
+                });
+            });
+        }
+
+        function copyToClipboard(text, successMessage = null) {
+            try {
+                navigator.clipboard.writeText(text).then(() => {
+                    if (successMessage) alert(successMessage);
+                }).catch(() => {
+                    fallbackCopy(text, successMessage);
+                });
+            } catch (e) {
+                fallbackCopy(text, successMessage);
+            }
+        }
+
+        function fallbackCopy(text, successMessage) {
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = text;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+            if (successMessage) alert(`${successMessage} (método alternativo)`);
+        }
+    </script>
+</body>
+</html>
